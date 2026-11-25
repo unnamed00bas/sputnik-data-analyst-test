@@ -53,7 +53,7 @@ def load_filtered_data(
             SELECT * FROM read_csv_auto('{raw_stores}');
             """
         )
-        # Выполняем точный SQL-запрос из задания, затем сортируем с парсингом дат
+        # Выполняем SQL-запрос объединения и фильтрации, затем сортируем с парсингом дат
         df = con.execute(sql).fetchdf()
     elif filtered_csv.exists():
         df = con.execute(

@@ -1,18 +1,27 @@
-# Анализ очередей на кассах: тестовое задание Спутник
+# Анализ очередей на кассах розничной сети
 
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![tests](https://github.com/unnamed00bas/sputnik-data-analyst-test/actions/workflows/tests.yml/badge.svg)](https://github.com/unnamed00bas/sputnik-data-analyst-test/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-## О проекте
+## Цель
 
-Это решение тестового задания на позицию «Ведущий аналитик данных» в компанию Спутник ([условия задания](https://sputnik.llc/technical_task/)). В задаче нужно объединить кассовые логи и справочник магазинов с помощью Power Query, отобрать два магазина (`98451680` и `12864064`), воспроизвести объединение и фильтр на SQL, а затем рассчитать периоды очередей на кассах, сохранив в Excel живые формулы без пересохранения в значения.
+Объединить кассовые логи и справочник магазинов с помощью Power Query, отобрать два магазина (`98451680` и `12864064`), воспроизвести объединение и фильтр на SQL, а затем рассчитать периоды очередей на кассах, сохранив в Excel живые формулы без пересохранения в значения.
 
-Все цифры и графики в этом репозитории получены кодом на Python и DuckDB из папки `src/`, проверены тестами `pytest`, а итоговая книга Excel с формулами лежит в [excel/sputnik_queues_solution.xlsx](excel/sputnik_queues_solution.xlsx).
+Все цифры и графики в этом репозитории получены кодом на Python и DuckDB из папки `src/`, проверены тестами `pytest`. Итоговая книга Excel с формулами лежит в [excel/sputnik_queues_solution.xlsx](excel/sputnik_queues_solution.xlsx).
+
+## Результат
+
+В обоих магазинах около 35% чеков проходит в очереди, но причины разные.
+
+- В магазине `12864064` (дневной режим, 3-е место в сети из 68 по числу чеков) через кассы самообслуживания проходит **29,1%** чеков (`7 668`), и пики сглаживаются. Доля чеков в очередях **35,6%**. Вечерние пики: **17:00 - 18:59** (`40,1%` и `39,3%`) и **20:00 - 20:59** (`41,2%`).
+- В магазине `98451680` (круглосуточный, 6-е место) через кассы самообслуживания проходит только **8,7%** чеков (`2 110`). На две обычные кассы ложится `91,2%` потока. Доля чеков в очередях **35,0%**. Обеденный пик в **12:00** дает **47,5%** чеков в очередях.
+
+Выборка для расчета: **50 581** чек за период **21.11.2024 - 26.12.2024**. В исходных данных сети 68 магазинов и 1 064 703 чека.
 
 ## Исходные данные и аудит качества
 
-В исходной папке с заданием находятся два CSV-файла:
+В исходных данных находятся два CSV-файла:
 
 - `store_stores.csv` (3,2 КБ, лежит в `data/store_stores.csv`): справочник из **68 магазинов** (`store_id`, `store_uuid`).
 - `store_checkout_queues.csv` (109,3 МБ, **1 064 703 строки**): чеки за период с **21.11.2024 по 26.12.2024**. Из-за ограничения GitHub в 100 МБ полный сырой файл исключен из репозитория. Для автономного запуска в `data/filtered_queues.csv` сохранена отфильтрованная выборка по двум целевым магазинам (**50 581 чек**, 3,6 МБ).
@@ -21,11 +30,11 @@
 
 1. **Целостность связки:** все 1 064 703 строки успешно соединяются со справочником по `store_uuid` (`0` несопоставленных записей, `0` дубликатов `store_id`).
 2. **Гранулярность:** в выборке по целевым магазинам `50 581` строка и ровно `50 581` уникальный `checks_number`. То есть одна строка соответствует одному отдельному чеку (разбивки по позициям внутри чека нет).
-3. **Расхождение в имени столбца:** в файле `store_checkout_queues.csv` номер кассы называется `checkout_id1`, тогда как итоговая таблица по условию требует имя `checkout_id`. Это переименование учтено и в Power Query, и в SQL.
+3. **Расхождение в имени столбца:** в файле `store_checkout_queues.csv` номер кассы называется `checkout_id1`, тогда как в итоговой таблице столбец должен называться `checkout_id`. Это переименование учтено и в Power Query, и в SQL.
 4. **Неполные дни на старте периода:** с `21.11` по `26.11` (6 дней) в обоих магазинах фиксируется всего по `9 - 18` чеков в сутки. Полномасштабный поток (`642 - 1 065` чеков в день в `12864064` и `738 - 904` в `98451680`) начинается с `27.11.2024` (30 полных дней).
 5. **Контекст по сети:** при медиане по всем 68 магазинам `14 497,5` чека целевые магазины входят в топ-10 самых загруженных точек сети: `12864064` на **3-м месте** (`26 387` чеков), `98451680` на **6-м месте** (`24 194` чека).
 
-## Шаги 1 - 3: Power Query и SQL
+## Power Query и SQL
 
 ### Power Query (M-код)
 
@@ -36,7 +45,7 @@
 3. Разворачивание `store_id`, переименование `checkout_id1 -> checkout_id`, отбор ровно 8 целевых полей в заданном порядке.
 4. Парсинг дат `start_operation_dt` и `end_operation_dt` с локалью `"ru-RU"`, фильтрация по `store_id = 98451680 or store_id = 12864064` и сортировка `store_id -> checkout_id -> start_operation_dt`.
 
-### SQL-запрос (шаг 3)
+### SQL-запрос объединения и фильтрации
 
 Полный запрос находится в [sql/01_merge_and_filter.sql](sql/01_merge_and_filter.sql):
 
@@ -62,7 +71,7 @@ ORDER BY
     scq.checks_number;
 ```
 
-## Шаг 4: методика определения периодов очереди
+## Методика определения периодов очереди
 
 В кассовых логах есть моменты открытия (`start_operation_dt`) и закрытия (`end_operation_dt`) каждого чека, но нет времени прихода покупателя в очередь до начала сканирования. Поэтому очередь восстанавливается по паузе между последовательными чеками на одной и той же кассе:
 
@@ -167,8 +176,8 @@ pytest -v
 │   ├── store_stores.pq                   # M-код загрузки справочника
 │   └── store_checkout_queues.pq          # M-код объединения, переименования и фильтрации
 ├── sql/
-│   ├── 01_merge_and_filter.sql           # точный SQL-запрос для шага 3 (алиасы scq и ss)
-│   └── 02_queue_periods.sql              # аналитический SQL-запрос определения очередей (шаг 4)
+│   ├── 01_merge_and_filter.sql           # SQL-запрос объединения и фильтрации (алиасы scq и ss)
+│   └── 02_queue_periods.sql              # аналитический SQL-запрос определения очередей
 ├── excel/
 │   └── sputnik_queues_solution.xlsx      # книга Excel с живыми формулами
 ├── reports/figures/                      # 4 аналитических графика PNG
@@ -181,6 +190,19 @@ pytest -v
     └── test_pipeline.py                  # автотесты паритета SQL/Python и живых формул Excel
 ```
 
+
+## Что можно доработать
+
+1. Распространить тот же расчет на все 68 магазинов сети и сравнить долю очередей, долю касс самообслуживания и пиковые окна по всей сети.
+2. Вынести неполные дни 21.11-26.11 в отдельный срез, чтобы основные показатели считались по 30 полным дням, с переключателем на листе параметров.
+3. Добавить в книгу сценарий, что будет с нагрузкой на кассы 6 и 7, если долю касс самообслуживания в магазине `98451680` поднять до 25-29%.
+4. Собрать календарь смен: по часам и дням недели показать, когда держать открытой дополнительную кассу 7 или 8.
+5. Встроить Power Query прямо в книгу Excel. Сейчас M-код лежит отдельно, потому что сборка шла в Linux.
+6. Когда появятся метки подхода покупателя к кассе или данные видеоаналитики зоны ожидания, добавить расчет реального времени ожидания в секундах.
+7. Считать не только очередь внутри одной кассы, но и переток между кассами в одном 15-минутном слоте.
+8. Подключить ежедневную дозагрузку новых чеков и пересчет формул без ручной пересборки книги.
+9. Хранить полный сырой файл `store_checkout_queues.csv` (109,3 МБ) вне Git и подтягивать его при запуске, чтобы аудит по всем 68 магазинам воспроизводился без ручного копирования в `../raw`.
+
 ## Контакты
 
 Марина Погодина, Telegram [@Marinochcin](https://t.me/Marinochcin), GitHub [@unnamed00bas](https://github.com/unnamed00bas).
@@ -189,4 +211,4 @@ pytest -v
 
 ## English summary
 
-My solution to the Lead Data Analyst take-home assignment for Sputnik. The task combines `store_checkout_queues.csv` (1.06M rows across 68 stores) and `store_stores.csv`, filters stores `98451680` and `12864064` (50,581 receipts), reproduces the merge and filtering in both Power Query M and SQL (`scq` / `ss` aliases), and identifies checkout queue periods in Excel using live formulas without hardcoding values. Using empirical inter-receipt gap histograms (`gap_sec <= 15s`, streak `>= 3` receipts) and 15-minute store load buckets, the analysis shows ~35% queue share in both stores driven by different bottlenecks: evening rush waves (`17:00` and `20:00`) in daytime store `12864064` (29.1% SCO adoption) versus severe SCO underutilization (8.7% share) and a `47.5%` lunchtime queue peak (`12:00`) in 24/7 store `98451680`. All numbers are verified by DuckDB SQL and `pytest`.
+Checkout queue analysis for a 68-store retail network. The project combines `store_checkout_queues.csv` (1.06M rows) and `store_stores.csv`, filters stores `98451680` and `12864064` (50,581 receipts), reproduces the merge and filtering in both Power Query M and SQL (`scq` / `ss` aliases), and identifies checkout queue periods in Excel using live formulas without hardcoding values. Using empirical inter-receipt gap histograms (`gap_sec <= 15s`, streak `>= 3` receipts) and 15-minute store load buckets, the analysis shows ~35% queue share in both stores driven by different bottlenecks: evening rush waves (`17:00` and `20:00`) in daytime store `12864064` (29.1% SCO adoption) versus severe SCO underutilization (8.7% share) and a `47.5%` lunchtime queue peak (`12:00`) in 24/7 store `98451680`. All numbers are verified by DuckDB SQL and `pytest`.

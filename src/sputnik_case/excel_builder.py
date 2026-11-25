@@ -71,7 +71,7 @@ def _style_header(ws, row: int, max_col: int) -> None:
 
 
 def _build_desc_sheet(ws) -> None:
-    ws["A1"] = "Тестовое задание Спутник: анализ очередей на кассах"
+    ws["A1"] = "Анализ очередей на кассах розничной сети"
     ws["A1"].font = TITLE_FONT
     ws["A2"] = "Модель полностью построена на живых формулах Excel без пересохранения в значения."
     ws["A2"].font = BASE_FONT
